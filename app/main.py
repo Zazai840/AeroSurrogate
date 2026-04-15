@@ -7,7 +7,7 @@ import structlog
 from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.cache import create_redis_client
+from app.cache import RedisCache
 from app.config import get_settings
 from app.db import engine
 from app.logging_config import configure_logging
@@ -39,14 +39,14 @@ class AppLifespan:
         log.info("startup.model_loaded", version=self.settings.model_version)
 
         # Connect to Redis and verify the connection is live
-        self.app.state.redis = await create_redis_client()
+        self.app.state.redis = await RedisCache.create(self.settings.redis_url)
         log.info("startup.redis_connected")
 
         log.info("startup.complete")
 
     async def shutdown(self) -> None:
         log.info("shutdown.begin")
-        await self.app.state.redis.aclose()
+        await self.app.state.redis.close()
         await engine.dispose()
         log.info("shutdown.complete")
 
