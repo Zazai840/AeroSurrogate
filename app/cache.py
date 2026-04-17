@@ -96,6 +96,10 @@ class RedisCache:
             ex=ttl if ttl is not None else settings.cache_ttl_seconds,
         )
 
+    async def ping(self) -> None:
+        """Verify the Redis connection is alive. Raises on failure."""
+        await self._client.ping()
+
     async def close(self) -> None:
         """Close the underlying connection pool gracefully."""
         await self._client.aclose()

@@ -53,6 +53,18 @@ class PredictionLogEntry(BaseModel):
     created_at: dt.datetime
 
 
+class CacheStats(BaseModel):
+    """Aggregate cache performance over the full prediction log."""
+
+    total_requests: int
+    cache_hits: int
+    cache_misses: int
+    hit_rate: float = Field(description="Cache hit rate as a fraction (0.0 – 1.0)")
+    avg_latency_ms: float
+    avg_latency_ms_hits: float | None = Field(None, description="Average latency for cache hits")
+    avg_latency_ms_misses: float | None = Field(None, description="Average latency for cache misses")
+
+
 class HealthResponse(BaseModel):
     status: str
     checks: dict[str, str]

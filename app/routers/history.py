@@ -10,12 +10,12 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.models_db import PredictionLog
-from app.schemas import PredictionLogEntry
+from app.schemas import CacheStats, PredictionLogEntry
 
 router = APIRouter(prefix="/history", tags=["history"])
 
@@ -49,6 +49,44 @@ async def get_history(
     result = await session.execute(stmt)
     rows = result.scalars().all()
     return [PredictionLogEntry.model_validate(row) for row in rows]
+
+
+@router.get("/stats", response_model=CacheStats)
+async def get_cache_stats(
+    session: AsyncSession = Depends(get_session),
+) -> CacheStats:
+    """Return aggregate cache performance metrics over the full prediction log.
+
+    Uses a single SQL query so it stays efficient even on large tables.
+    """
+    stmt = select(
+        func.count().label("total"),
+        func.sum(case((PredictionLog.cache_hit == True, 1), else_=0)).label("hits"),  # noqa: E712
+        func.avg(PredictionLog.latency_ms).label("avg_latency"),
+        func.avg(
+            case((PredictionLog.cache_hit == True, PredictionLog.latency_ms), else_=None)  # noqa: E712
+        ).label("avg_latency_hits"),
+        func.avg(
+            case((PredictionLog.cache_hit == False, PredictionLog.latency_ms), else_=None)  # noqa: E712
+        ).label("avg_latency_misses"),
+    )
+
+    result = await session.execute(stmt)
+    row = result.one()
+
+    total = row.total or 0
+    hits = int(row.hits or 0)
+    misses = total - hits
+
+    return CacheStats(
+        total_requests=total,
+        cache_hits=hits,
+        cache_misses=misses,
+        hit_rate=hits / total if total > 0 else 0.0,
+        avg_latency_ms=round(row.avg_latency or 0.0, 3),
+        avg_latency_ms_hits=round(row.avg_latency_hits, 3) if row.avg_latency_hits is not None else None,
+        avg_latency_ms_misses=round(row.avg_latency_misses, 3) if row.avg_latency_misses is not None else None,
+    )
 
 
 @router.get("/{request_id}", response_model=PredictionLogEntry)
